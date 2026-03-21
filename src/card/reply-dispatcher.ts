@@ -219,45 +219,46 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         log.warn('deliver: card creation failed, falling back to static delivery');
       }
 
-      // ---- Static delivery ----
-      if (shouldUseCard(text)) {
-        const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
-        log.info('deliver: sending card chunks', { count: chunks.length, chatId });
-        for (const chunk of chunks) {
-          try {
-            await sendMarkdownCardFeishu({
-              cfg,
-              to: chatId,
-              text: chunk,
-              replyToMessageId,
-              replyInThread,
-              accountId,
-            });
-          } catch (err) {
-            if (staticGuard?.terminate('deliver.cardChunk', err)) return;
-            throw err;
+      // ---- Static text delivery ----
+      if (text.trim()) {
+        if (shouldUseCard(text)) {
+          const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
+          log.info('deliver: sending card chunks', { count: chunks.length, chatId });
+          for (const chunk of chunks) {
+            try {
+              await sendMarkdownCardFeishu({
+                cfg,
+                to: chatId,
+                text: chunk,
+                replyToMessageId,
+                replyInThread,
+                accountId,
+              });
+            } catch (err) {
+              if (staticGuard?.terminate('deliver.cardChunk', err)) return;
+              throw err;
+            }
+          }
+        } else {
+          const converted = core.channel.text.convertMarkdownTables(text, tableMode);
+          const chunks = core.channel.text.chunkTextWithMode(converted, textChunkLimit, chunkMode);
+          log.info('deliver: sending text chunks', { count: chunks.length, chatId });
+          for (const chunk of chunks) {
+            try {
+              await sendMessageFeishu({
+                cfg,
+                to: chatId,
+                text: chunk,
+                replyToMessageId,
+                replyInThread,
+                accountId,
+              });
+            } catch (err) {
+              if (staticGuard?.terminate('deliver.textChunk', err)) return;
+              throw err;
+            }
           }
         }
-      } else {
-        const converted = core.channel.text.convertMarkdownTables(text, tableMode);
-        const chunks = core.channel.text.chunkTextWithMode(converted, textChunkLimit, chunkMode);
-        log.info('deliver: sending text chunks', { count: chunks.length, chatId });
-        for (const chunk of chunks) {
-          try {
-            await sendMessageFeishu({
-              cfg,
-              to: chatId,
-              text: chunk,
-              replyToMessageId,
-              replyInThread,
-              accountId,
-            });
-          } catch (err) {
-            if (staticGuard?.terminate('deliver.textChunk', err)) return;
-            throw err;
-          }
-        }
-
       }
 
       // ---- Static media delivery ----
@@ -274,6 +275,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             replyInThread,
           });
         } catch (mediaErr) {
+          if (staticGuard?.terminate('deliver.media', mediaErr)) return;
           log.error('deliver: static media send failed', { error: String(mediaErr) });
         }
       }
