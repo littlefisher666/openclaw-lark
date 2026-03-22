@@ -204,7 +204,8 @@ export class LarkClient {
    * With `accountId` — dispose that single instance.
    * Without — dispose every cached instance and clear the cache.
    */
-  static clearCache(accountId?: string): void {
+  static async clearCache(accountId?: string): Promise<void> {
+    const {clearUserNameCache} = await import('../messaging/inbound/user-name-cache');
     if (accountId !== undefined) {
       cache.get(accountId)?.dispose();
       clearUserNameCache(accountId);
