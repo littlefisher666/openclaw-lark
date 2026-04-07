@@ -23,6 +23,7 @@ import { EMPTY_TOOL_USE_PLACEHOLDER, type ToolUseDisplayStep } from './tool-use-
  */
 export const STREAMING_ELEMENT_ID = 'streaming_content';
 export const REASONING_ELEMENT_ID = 'reasoning_content';
+const TOOL_USE_STEP_CONTENT_INDENT = '0px 0px 0px 22px';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -758,7 +759,7 @@ function buildStreamingToolUseActivePanel(params: { steps: ToolUseDisplayStep[];
     border: { color: 'grey', corner_radius: '5px' },
     vertical_spacing: '4px',
     padding: '8px 8px 8px 8px',
-    elements: steps.map(buildToolUseStepElement),
+    elements: steps.flatMap((step) => buildToolUseStepElements(step)),
   };
 }
 
@@ -819,7 +820,9 @@ function buildToolUsePanel(params: {
   }
 
   const stepElements =
-    toolUseSteps.length > 0 ? toolUseSteps.map((step) => buildToolUseStepElement(step)) : [buildToolUsePlaceholder()];
+    toolUseSteps.length > 0
+      ? toolUseSteps.flatMap((step) => buildToolUseStepElements(step))
+      : [buildToolUsePlaceholder()];
 
   return {
     tag: 'collapsible_panel',
@@ -852,20 +855,17 @@ function buildToolUsePanel(params: {
   };
 }
 
-function buildToolUseStepElement(step: ToolUseDisplayStep): CardElement {
-  return {
-    tag: 'div',
-    icon: {
-      tag: 'standard_icon',
-      token: step.iconToken,
-      color: 'grey',
-    },
-    text: {
-      tag: 'lark_md',
-      content: buildToolUseStepMarkdown(step),
-      text_size: 'notation',
-    },
-  };
+function buildToolUseStepElements(step: ToolUseDisplayStep): CardElement[] {
+  const elements: CardElement[] = [buildToolUseStepTitleElement(step)];
+  const detailElement = buildToolUseStepDetailElement(step);
+  if (detailElement) {
+    elements.push(detailElement);
+  }
+  const outputElement = buildToolUseStepOutputElement(step);
+  if (outputElement) {
+    elements.push(outputElement);
+  }
+  return elements;
 }
 
 function buildToolUsePlaceholder(labels?: { zh: string; en: string }): CardElement {
@@ -886,16 +886,61 @@ function buildToolUsePlaceholder(labels?: { zh: string; en: string }): CardEleme
   };
 }
 
-function buildToolUseStepMarkdown(step: ToolUseDisplayStep): string {
-  const status = formatToolUseStepStatus(step.status);
-  const lines: string[] = [
-    `**${escapeToolUseMarkdownText(step.title)}** · <font color='${status.color}'>${status.label}</font>`,
-  ];
+function buildToolUseStepTitleElement(step: ToolUseDisplayStep): CardElement {
+  return {
+    tag: 'div',
+    icon: {
+      tag: 'standard_icon',
+      token: step.iconToken,
+      color: 'grey',
+    },
+    text: {
+      tag: 'lark_md',
+      content: buildToolUseStepTitleMarkdown(step),
+      text_size: 'notation',
+    },
+  };
+}
 
-  const detail = formatToolUseStepDetail(step);
-  if (detail) {
-    lines.push(detail);
-  }
+function buildToolUseStepTitleMarkdown(step: ToolUseDisplayStep): string {
+  const status = formatToolUseStepStatus(step.status);
+  return optimizeMarkdownStyle(
+    `**${escapeToolUseMarkdownText(step.title)}** · <font color='${status.color}'>${status.label}</font>`,
+    1,
+  );
+}
+
+function buildToolUseStepDetailElement(step: ToolUseDisplayStep): CardElement | undefined {
+  const detail = step.detail?.trim();
+  if (!detail) return undefined;
+  return {
+    tag: 'div',
+    margin: TOOL_USE_STEP_CONTENT_INDENT,
+    text: {
+      tag: 'plain_text',
+      content: detail,
+      text_color: 'grey',
+      text_size: 'notation',
+    },
+  };
+}
+
+function buildToolUseStepOutputElement(step: ToolUseDisplayStep): CardElement | undefined {
+  const content = buildToolUseStepOutputMarkdown(step);
+  if (!content) return undefined;
+  return {
+    tag: 'div',
+    margin: TOOL_USE_STEP_CONTENT_INDENT,
+    text: {
+      tag: 'lark_md',
+      content,
+      text_size: 'notation',
+    },
+  };
+}
+
+function buildToolUseStepOutputMarkdown(step: ToolUseDisplayStep): string | undefined {
+  const lines: string[] = [];
 
   if (step.errorBlock) {
     lines.push('**Error**');
@@ -905,6 +950,7 @@ function buildToolUseStepMarkdown(step: ToolUseDisplayStep): string {
     lines.push(formatToolUseCodeBlock(step.resultBlock.content, step.resultBlock.language));
   }
 
+  if (lines.length === 0) return undefined;
   return optimizeMarkdownStyle(lines.join('\n'), 1);
 }
 
@@ -918,12 +964,6 @@ function formatToolUseStepStatus(status: ToolUseDisplayStep['status']): { label:
     default:
       return { label: 'Succeeded', color: 'green' };
   }
-}
-
-function formatToolUseStepDetail(step: ToolUseDisplayStep): string | undefined {
-  const detail = step.detail?.trim();
-  if (!detail) return undefined;
-  return `<font color='grey'>${escapeToolUseMarkdownText(detail)}</font>`;
 }
 
 function formatToolUseCodeBlock(content: string, language: 'json' | 'text'): string {

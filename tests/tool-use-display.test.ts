@@ -138,6 +138,24 @@ describe('error display', () => {
     expect(result.steps[0]!.errorBlock?.language).toBe('text');
     expect(result.steps[0]!.errorBlock?.content).toBe('exit code 1');
   });
+
+  it('redacts inline secrets in command error blocks', () => {
+    const result = normalizeToolUseDisplay({
+      traceSteps: [
+        traceStep({
+          toolName: 'bash',
+          error: `TOKEN=supersecret Authorization: Bearer abc123`,
+          status: 'error',
+          params: { command: 'test' },
+        }),
+      ],
+    });
+
+    expect(result.steps[0]!.errorBlock?.content).toContain('TOKEN=[redacted]');
+    expect(result.steps[0]!.errorBlock?.content).toContain('Authorization: Bearer [redacted]');
+    expect(result.steps[0]!.errorBlock?.content).not.toContain('supersecret');
+    expect(result.steps[0]!.errorBlock?.content).not.toContain('abc123');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -234,6 +252,41 @@ describe('result detail gating', () => {
     expect(result.steps[0]!.detail).toContain('Authorization: Bearer [redacted]');
     expect(result.steps[0]!.detail).not.toContain('supersecret');
     expect(result.steps[0]!.detail).not.toContain('abc123');
+  });
+
+  it('preserves shell redirect syntax in command details', () => {
+    const result = normalizeToolUseDisplay({
+      traceSteps: [
+        traceStep({
+          toolName: 'bash',
+          params: {
+            command: 'cat < input.txt > output.txt',
+          },
+          status: 'success',
+        }),
+      ],
+    });
+
+    expect(result.steps[0]!.detail).toBe('cat < input.txt > output.txt');
+  });
+
+  it('redacts inline secrets in command result blocks', () => {
+    const result = normalizeToolUseDisplay({
+      traceSteps: [
+        traceStep({
+          toolName: 'bash',
+          params: { command: 'pnpm test' },
+          result: `TOKEN=supersecret Authorization: Bearer abc123`,
+          status: 'success',
+        }),
+      ],
+      showResultDetails: true,
+    });
+
+    expect(result.steps[0]!.resultBlock?.content).toContain('TOKEN=[redacted]');
+    expect(result.steps[0]!.resultBlock?.content).toContain('Authorization: Bearer [redacted]');
+    expect(result.steps[0]!.resultBlock?.content).not.toContain('supersecret');
+    expect(result.steps[0]!.resultBlock?.content).not.toContain('abc123');
   });
 });
 

@@ -219,7 +219,7 @@ function formatToolStep(
   const detail = rawDetail ? sanitizeToolDetail(descriptor?.sanitizer ?? 'generic', rawDetail, options) : undefined;
   const title = buildToolTitle(source, descriptor, rawDetail);
   const status = resolveStepStatus(source);
-  const errorBlock = source.error ? buildErrorBlock(source.error) : undefined;
+  const errorBlock = source.error ? buildErrorBlock(source.error, descriptor) : undefined;
   const resultBlock = !errorBlock && options.showResultDetails ? buildResultBlock(source, descriptor) : undefined;
 
   return {
@@ -315,11 +315,18 @@ function buildResultBlock(
   if (descriptor && ['Read', 'Edit', 'Fetch web page', 'Browser'].includes(descriptor.title)) {
     return undefined;
   }
-  return buildDisplayBlock(source.result);
+  return buildDisplayBlock(sanitizeDisplayBlockValue(source.result, descriptor));
 }
 
-function buildErrorBlock(error: string): ToolUseDisplayBlock | undefined {
-  return buildDisplayBlock(error, 'text');
+function buildErrorBlock(error: string, descriptor: ToolDescriptor | undefined): ToolUseDisplayBlock | undefined {
+  return buildDisplayBlock(sanitizeDisplayBlockValue(error, descriptor), 'text');
+}
+
+function sanitizeDisplayBlockValue(value: unknown, descriptor: ToolDescriptor | undefined): unknown {
+  if (descriptor?.sanitizer === 'command' && typeof value === 'string') {
+    return redactInlineSecrets(value);
+  }
+  return value;
 }
 
 function buildPatternDetail(params: Record<string, unknown>, options: { includeTarget: boolean }): string | undefined {
@@ -342,6 +349,12 @@ function sanitizeToolDetail(
   value: string,
   options: { showFullPaths: boolean },
 ): string | undefined {
+  if (kind === 'command') {
+    const cleaned = normalizeInlineDisplayText(value);
+    if (!cleaned) return undefined;
+    return sanitizeCommandLike(cleaned, options);
+  }
+
   const cleaned = sanitizeGenericText(value);
   if (!cleaned) return undefined;
 
@@ -359,12 +372,14 @@ function sanitizeToolDetail(
       return stripQuotes(cleaned);
     case 'url':
       return stripQuotes(cleaned).replace(/^from\s+/i, '');
-    case 'command':
-      return sanitizeCommandLike(cleaned, options);
     case 'generic':
     default:
       return cleaned;
   }
+}
+
+function normalizeInlineDisplayText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function sanitizePathLike(value: string, options: { showFullPaths: boolean }): string {
